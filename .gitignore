@@ -1,0 +1,62 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build output — GitHub Pages builds from source via Actions, so dist is never
+# committed. Delete this line only if you switch to pushing a gh-pages branch.
+dist
+dist-ssr
+build
+
+# Vite / tooling caches
+.vite
+node_modules/.vite
+.cache
+.temp
+.tmp
+*.tsbuildinfo
+
+# Test output
+coverage
+.nyc_output
+.vitest
+html/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Environment
+.env
+.env.*
+!.env.example
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini

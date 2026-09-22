@@ -1,0 +1,138 @@
+.panel {
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.tabBar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border2);
+  flex-shrink: 0;
+}
+
+.tabBtn {
+  padding: 5px 16px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border2);
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-title);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  margin-bottom: -1px;
+}
+
+.tabBtn:hover { color: #a88a52; }
+.tabBtn.active {
+  color: var(--gold);
+  background: #111018;
+  border-bottom-color: var(--gold);
+}
+
+.collapseBtn {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border2);
+  color: var(--text-dark);
+  font-size: 9px;
+  padding: 0 10px;
+  transition: color 0.15s;
+}
+
+.collapseBtn:hover { color: var(--gold); }
+
+.collapsed {
+  height: 0 !important;
+  overflow: hidden !important;
+  border: none;
+}
+
+.waveArea {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-left: 1px solid var(--border2);
+  flex-shrink: 0;
+}
+
+.waveHint {
+  font-size: 9px;
+  color: var(--text-dark);
+  white-space: nowrap;
+}
+
+.waveBtn {
+  background: #0e0e00;
+  border: 1px solid var(--gold);
+  border-radius: 3px;
+  color: var(--gold);
+  font-size: 10px;
+  font-family: var(--font-title);
+  padding: 4px 14px;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.waveBtn:hover:not(:disabled) { background: #1e1a00; }
+.waveBtn:disabled { border-color: var(--border2); color: var(--text-dark); }
+
+.tabContent {
+  display: flex;
+  overflow: hidden;
+  /* Viewport-relative so a short landscape phone does not lose the board to
+     the panel, while desktop keeps a comfortable fixed size. */
+  height: clamp(96px, 26vh, 196px);
+  flex-shrink: 0;
+}
+
+/* Calling a wave in early is the risky, rewarding option — flag it. */
+.earlyBtn {
+  border-color: #e07020;
+  color: #f0a040;
+  background: #1a0e00;
+  animation: earlyPulse 1.8s ease-in-out infinite;
+}
+
+.earlyBtn:hover:not(:disabled) { background: #2a1600; }
+
+@keyframes earlyPulse {
+  0%, 100% { box-shadow: 0 0 0 0 #e0702000; }
+  50% { box-shadow: 0 0 8px 0 #e0702055; }
+}
+
+/* ── Small screens ──────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .tabBtn { padding: 5px 10px; font-size: 9px; }
+  .waveHint { display: none; }
+}
+
+/* Landscape phones: very wide, very short. */
+@media (max-height: 520px) {
+  .tabContent { height: clamp(88px, 27vh, 124px); overflow-y: auto; }
+  .tabBtn { padding: 3px 9px; font-size: 9px; }
+  .waveHint { display: none; }
+  .waveBtn { padding: 3px 10px; font-size: 9px; }
+}
+
+@media (max-width: 620px) {
+  .tabBar { flex-wrap: wrap; }
+  /* On a phone the board is width-limited, so the space under it is free —
+     give it to the panel and let the contents scroll rather than clip. */
+  .tabContent { height: clamp(150px, 30vh, 240px); overflow-y: auto; }
+  .waveArea {
+    margin-left: auto;
+    padding: 0 8px;
+    border-left: none;
+  }
+  .waveBtn { padding: 4px 10px; font-size: 9px; }
+}

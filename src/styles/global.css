@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --bg:        #0a0a0f;
+  --bg2:       #0d0d15;
+  --bg3:       #111018;
+  --border:    #2a2010;
+  --border2:   #1a1612;
+  --gold:      #d4a853;
+  --gold-dim:  #8a6a32;
+  --text:      #c8b89a;
+  --text-dim:  #6a5a3a;
+  --text-dark: #3a3020;
+  --red:       #e04030;
+  --path-bg:   #181408;
+  --path-fg:   #201c0e;
+  --cell-bg:   #0e0e1a;
+  --font-title: 'Cinzel', serif;
+  --font-mono:  'Share Tech Mono', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-text-size-adjust: 100%;
+  /* No pull-to-refresh or rubber-band scroll over the board. */
+  overscroll-behavior: none;
+}
+
+/* Touch targets need to be reachable with a thumb, and iOS must not zoom on
+   focus, which it does for any input under 16px. */
+@media (pointer: coarse) {
+  button { min-height: 30px; }
+  input { font-size: 16px; }
+}
+
+button {
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

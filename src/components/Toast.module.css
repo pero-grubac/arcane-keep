@@ -1,0 +1,24 @@
+.toast {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  font-family: var(--font-title);
+  font-size: 13px;
+  color: var(--gold);
+  background: #0d0d15ee;
+  border: 1px solid var(--border);
+  padding: 6px 18px;
+  border-radius: 3px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 100;
+  opacity: 0;
+  animation: toastPop 2.6s ease forwards;
+}
+
+@keyframes toastPop {
+  0%   { opacity: 0; transform: translate(-50%, -6px); }
+  8%   { opacity: 1; transform: translate(-50%, 0); }
+  78%  { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -4px); }
+}

@@ -1,0 +1,105 @@
+.bar {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 40;
+}
+
+.ability {
+  position: relative;
+  overflow: hidden;
+  width: 92px;
+  background: #0d0d15dd;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+
+.ability:disabled { cursor: not-allowed; opacity: 1; }
+
+.ready { border-color: #6a5a32; color: var(--text); }
+.ready:hover { border-color: var(--gold); background: #17150add; }
+
+.armed {
+  border-color: #ff8030;
+  color: #ffb070;
+  box-shadow: 0 0 0 1px #ff8030 inset, 0 0 14px #ff803055;
+}
+
+.emoji { font-size: 17px; line-height: 1; z-index: 2; }
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  z-index: 2;
+}
+
+.name {
+  font-family: var(--font-title);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.key { font-size: 8px; color: var(--text-dark); }
+
+/* Fills from the bottom as the cooldown runs down. */
+.cooldownFill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: #00000099;
+  z-index: 1;
+  transition: height 0.12s linear;
+}
+
+.cooldownText {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: var(--text-dim);
+  z-index: 3;
+}
+
+.active {
+  position: absolute;
+  right: 5px;
+  top: 3px;
+  font-size: 8px;
+  color: #ffd060;
+  z-index: 3;
+}
+
+/* ── Small screens ──────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .ability { width: 72px; padding: 4px 5px; }
+  .name { font-size: 8px; }
+}
+
+@media (max-width: 620px) {
+  .bar { left: 6px; bottom: 6px; gap: 4px; }
+  .ability { width: 40px; justify-content: center; padding: 5px 4px; }
+  .meta { display: none; }
+  .emoji { font-size: 18px; }
+  .cooldownText { right: 50%; transform: translate(50%, -50%); font-size: 11px; }
+}
+
+@media (max-height: 520px) {
+  .bar { left: 6px; bottom: 6px; gap: 4px; }
+  .ability { width: 40px; justify-content: center; padding: 4px; }
+  .meta { display: none; }
+  .cooldownText { right: 50%; transform: translate(50%, -50%); font-size: 11px; }
+}
