@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HANDCRAFTED_MAPS, generateMap } from '../game/maps/index.js'
 import { randomSeed } from '../game/rng.js'
-import { dailyKey, dailySeed, getDailyBest, loadSave } from '../game/storage.js'
+import { dailyKey, dailySeed, getDailyBest, loadSave, loadRun } from '../game/storage.js'
 import styles from './MapSelect.module.css'
 
 // Small canvas showing the actual generated path, so "Random Realm" is no
@@ -62,8 +62,9 @@ function MapPreview({ map, width = 210, height = 124 }) {
   return <canvas ref={ref} className={styles.preview} style={{ width, height }} />
 }
 
-export default function MapSelect({ onStart, soundOn, onToggleSound }) {
+export default function MapSelect({ onStart, onResume, soundOn, onToggleSound, onOpenSettings }) {
   const saved = useMemo(() => loadSave(), [])
+  const savedRun = useMemo(() => loadRun(), [])
   // Offer the last seed played first, so reloading the page still lets you
   // retry the exact map you were on.
   const [seed, setSeed] = useState(() => saved.lastSeed ?? randomSeed())
@@ -98,11 +99,31 @@ export default function MapSelect({ onStart, soundOn, onToggleSound }) {
       <h1 className={styles.title}>⚔ ARCANE KEEP</h1>
       <p className={styles.sub}>Choose your battleground</p>
 
-      <button className={styles.soundToggle} onClick={onToggleSound} title="Sound (M)">
-        {soundOn ? '🔊 Sound on' : '🔇 Muted'}
-      </button>
+      <div className={styles.topButtons}>
+        <button
+          className={styles.soundToggle}
+          onClick={onToggleSound}
+          title="Sound (M)"
+          aria-pressed={soundOn}
+        >
+          {soundOn ? '🔊 Sound on' : '🔇 Muted'}
+        </button>
+        <button className={styles.soundToggle} onClick={onOpenSettings}>⚙ Settings</button>
+      </div>
 
       <div className={`${styles.cards} ${styles.dailyRow}`}>
+        {savedRun?.map && (
+          <button className={`${styles.card} ${styles.resumeCard}`} onClick={onResume}>
+            <MapPreview map={savedRun.map} />
+            <span className={styles.cardName}>▶ Continue run</span>
+            <span className={styles.cardDesc}>
+              {savedRun.map.name} · before wave {savedRun.wave + 1}
+            </span>
+            <span className={styles.meta}>
+              ❤️ {savedRun.lives} · 💰 {Math.floor(savedRun.gold)} · {savedRun.towers.length} towers
+            </span>
+          </button>
+        )}
         <div
           className={`${styles.card} ${styles.dailyCard}`}
           role="button"
@@ -169,6 +190,7 @@ export default function MapSelect({ onStart, soundOn, onToggleSound }) {
             <button className={styles.rerollBtn} onClick={reroll}>🎲 Reroll</button>
             <input
               className={styles.seedInput}
+              aria-label="Map seed"
               value={seedInput}
               placeholder="seed"
               onChange={(e) => setSeedInput(e.target.value)}

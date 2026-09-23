@@ -66,10 +66,36 @@ export function makeGameState(map, seed) {
     selectedTowerId: null,
     hoverCell: null,
     towerCounts: { archer: 0, mage: 0, frost: 0, cannon: 0, obelisk: 0 },
+    // Run history for the end-of-run report. `waves` gets one entry per wave
+    // cleared (lives left, leaks taken), so the report can chart the run.
+    stats: { earned: 0, spent: 0, refunded: 0, waves: [], leaks: {} },
   }
 }
 
+// Every gold movement goes through these two, so the run report can tell
+// income from spending without the UI keeping its own books.
+export function earnGold(state, amount, kind = 'earned') {
+  if (amount <= 0) return
+  state.gold += amount
+  state.stats[kind] += amount
+}
+
+export function spendGold(state, amount) {
+  if (amount <= 0) return
+  state.gold -= amount
+  state.stats.spent += amount
+}
+
 let nextTowerId = 1
+
+// Tower ids come from a module counter. A restored run brings its own ids, so
+// the counter has to be moved past them or the next tower would collide.
+function reserveTowerIds(towers) {
+  for (const t of towers) {
+    const n = Number(String(t.id).slice(1))
+    if (Number.isFinite(n) && n >= nextTowerId) nextTowerId = n + 1
+  }
+}
 
 // A map may have more than one lane. `path` stays the primary for anything that
 // only needs one; `paths` is the full set.
@@ -170,6 +196,82 @@ export function startWave(state) {
   }
   state.waveActive = true
   return { data, bonus }
+}
+
+// ─── Saving a run ─────────────────────────────────────────────────────────────
+// A run is only ever saved between waves. Waves are a pure function of the
+// seed, so the field itself is not stored: the towers, the purse and the combat
+// RNG position are enough to carry on where the player left off. The one thing
+// dropped is burning ground still smouldering from the last wave.
+
+const SAVE_VERSION = 1
+
+const TOWER_FIELDS = [
+  'id', 'col', 'row', 'terrain', 'baseType', 'upgrades', 'evolved', 'evolveStat',
+  'targeting', 'killCount', 'damageDealt', 'invested', 'cooldown', 'spin',
+]
+
+export function canSaveRun(state) {
+  return state.phase === 'playing' && !state.waveActive
+}
+
+export function serializeRun(state) {
+  if (!canSaveRun(state)) return null
+  // Private caches (map._pathSet) are rebuilt on demand and do not survive JSON.
+  const map = Object.fromEntries(
+    Object.entries(state.currentMap).filter(([k]) => !k.startsWith('_')),
+  )
+  return {
+    v: SAVE_VERSION,
+    savedAt: Date.now(),
+    map,
+    seed: state.seed,
+    dailyKey: state.dailyKey ?? null,
+    rng: state.rng.getState(),
+    wave: state.wave,
+    gold: state.gold,
+    lives: state.lives,
+    kills: state.kills,
+    leaked: state.leaked,
+    time: state.time,
+    // The fixed-timestep remainder decides which frame each substep lands on.
+    acc: state.acc,
+    spawnCount: state.spawnCount,
+    gameSpeed: state.gameSpeed,
+    abilityCd: { ...state.abilityCd },
+    towerCounts: { ...state.towerCounts },
+    stats: structuredClone(state.stats),
+    towers: state.towers.map((t) => {
+      const out = {}
+      for (const k of TOWER_FIELDS) out[k] = t[k]
+      out.upgrades = { ...t.upgrades }
+      return out
+    }),
+  }
+}
+
+export function restoreRun(data) {
+  if (!data || data.v !== SAVE_VERSION || !data.map) return null
+  const state = makeGameState(data.map, data.seed)
+  state.dailyKey = data.dailyKey
+  state.rng.setState(data.rng)
+  for (const k of ['wave', 'gold', 'lives', 'kills', 'leaked', 'time', 'acc', 'spawnCount', 'gameSpeed']) {
+    if (typeof data[k] === 'number') state[k] = data[k]
+  }
+  Object.assign(state.abilityCd, data.abilityCd)
+  Object.assign(state.towerCounts, data.towerCounts)
+  state.stats = { ...state.stats, ...data.stats }
+  state.towers = data.towers.map((saved) => {
+    const t = createTower(saved.col, saved.row, saved.baseType, saved.invested, saved.terrain)
+    Object.assign(t, saved, { upgrades: { ...saved.upgrades } })
+    return t
+  })
+  reserveTowerIds(state.towers)
+  // Opening on the previous wave's composition would preview the wrong wave.
+  state.waveData = null
+  state.selectedBuild = null
+  state.paused = true
+  return state
 }
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
@@ -724,6 +826,7 @@ function reapEnemies(state, callbacks) {
   for (const e of state.enemies) {
     if (e.reached) {
       state.leaked++
+      state.stats.leaks[state.wave] = (state.stats.leaks[state.wave] ?? 0) + e.liveDmg
       spawnParticles(state, e.x, e.y, '#e04030', 12, 1.5, 3.5, 0.5, 1.2)
       sfx(state, 'leak')
       callbacks.onLeak(e)
@@ -900,6 +1003,7 @@ function substep(state, dt, callbacks) {
   // ── Wave completion ──
   if (state.waveActive && state.spawnQueue.length === 0 && state.enemies.length === 0) {
     state.waveActive = false
+    state.stats.waves.push({ wave: state.wave, lives: state.lives })
     callbacks.onWaveCleared(state.wave, clearBonus(state.wave))
   }
 

@@ -49,6 +49,12 @@ const SHOOT_TONE = {
 function createAudio(enabled = true) {
   let ctx = null
   let master = null
+  // Two buses under the master, so effects and the ambient bed have their own
+  // volume sliders. Levels are kept even before the context exists, because the
+  // context is only created on the first sound.
+  let sfxBus = null
+  let ambientBus = null
+  const volume = { sfx: 1, ambient: 1 }
   let noiseBuffer = null
   let ambient = null
   let ambientWave = 0
@@ -64,6 +70,12 @@ function createAudio(enabled = true) {
       master = ctx.createGain()
       master.gain.value = MASTER
       master.connect(ctx.destination)
+      sfxBus = ctx.createGain()
+      sfxBus.gain.value = volume.sfx
+      sfxBus.connect(master)
+      ambientBus = ctx.createGain()
+      ambientBus.gain.value = volume.ambient
+      ambientBus.connect(master)
 
       // One second of white noise, reused for every percussive sound.
       noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
@@ -87,7 +99,7 @@ function createAudio(enabled = true) {
     g.gain.linearRampToValueAtTime(gain, t0 + Math.min(0.012, dur * 0.3))
     g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur)
     osc.connect(g)
-    g.connect(master)
+    g.connect(sfxBus)
     osc.start(t0)
     osc.stop(t0 + dur + 0.02)
   }
@@ -107,7 +119,7 @@ function createAudio(enabled = true) {
     g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur)
     src.connect(filter)
     filter.connect(g)
-    g.connect(master)
+    g.connect(sfxBus)
     src.start(t0)
     src.stop(t0 + dur + 0.02)
   }
@@ -229,7 +241,7 @@ function createAudio(enabled = true) {
       osc.connect(filter)
       sub.connect(filter)
       filter.connect(gain)
-      gain.connect(master)
+      gain.connect(ambientBus)
       osc.start()
       sub.start()
       ambient = { osc, sub, gain, filter }
@@ -264,6 +276,14 @@ function createAudio(enabled = true) {
         if (ctx?.state === 'suspended') ctx.resume()
         if (ambient && ambientWave) setAmbient(true, ambientWave)
       }
+    },
+    // Each level is 0–1 and scales that bus on top of the master level.
+    setVolumes({ sfx, ambient } = {}) {
+      if (typeof sfx === 'number') volume.sfx = Math.max(0, Math.min(1, sfx))
+      if (typeof ambient === 'number') volume.ambient = Math.max(0, Math.min(1, ambient))
+      if (!ctx) return
+      sfxBus.gain.setTargetAtTime(volume.sfx, ctx.currentTime, 0.05)
+      ambientBus.gain.setTargetAtTime(volume.ambient, ctx.currentTime, 0.05)
     },
     get enabled() {
       return on

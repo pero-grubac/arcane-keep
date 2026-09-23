@@ -6,7 +6,16 @@
 const KEY = 'arcane-keep/v1'
 
 const EMPTY = {
-  settings: { sound: true, speed: 1 },
+  settings: {
+    sound: true,
+    speed: 1,
+    sfxVolume: 1,
+    ambientVolume: 1,
+    // 'system' follows prefers-reduced-motion; 'reduced' and 'full' override it.
+    motion: 'system',
+    // Adds shapes to status effects so none depend on colour alone.
+    statusShapes: false,
+  },
   records: {},   // mapId → { bestWave, runs, bestKills }
   daily: {},     // yyyy-mm-dd → bestWave
   lastSeed: null,
@@ -87,6 +96,38 @@ export function recordRun({ mapId, wave, kills, dailyKey }) {
 
 export function getRecord(mapId) {
   return read().records[mapId] ?? null
+}
+
+// ─── Run in progress ──────────────────────────────────────────────────────────
+// Kept under its own key: a run snapshot is rewritten constantly between waves,
+// and a bad one must never be able to take the records down with it.
+
+const RUN_KEY = 'arcane-keep/run/v1'
+
+export function saveRun(data) {
+  if (!data) return
+  try {
+    localStorage.setItem(RUN_KEY, JSON.stringify(data))
+  } catch {
+    /* best-effort */
+  }
+}
+
+export function loadRun() {
+  try {
+    const raw = localStorage.getItem(RUN_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearRun() {
+  try {
+    localStorage.removeItem(RUN_KEY)
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ─── Daily challenge ──────────────────────────────────────────────────────────
