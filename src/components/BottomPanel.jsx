@@ -33,7 +33,9 @@ export default function BottomPanel({
 
   const nextWave = ui.wave + 1
   const early = ui.waveActive && ui.phase === 'playing'
-  const hint = ui.phase !== 'playing'
+  const hint = ui.replay
+    ? 'Watching a replay'
+    : ui.phase !== 'playing'
     ? 'Run over.'
     : early
       ? `Wave ${ui.wave} · ${ui.enemiesLeft} left · call in early for +${ui.earlyBonus}g`
@@ -70,7 +72,7 @@ export default function BottomPanel({
           <button
             className={`${styles.waveBtn} ${early ? styles.earlyBtn : ''}`}
             onClick={onSendWave}
-            disabled={ui.phase !== 'playing'}
+            disabled={ui.phase !== 'playing' || Boolean(ui.replay)}
             title={early
               ? `Call wave ${nextWave} in early for +${ui.earlyBonus} gold (Enter)`
               : 'Send the next wave (Enter)'}

@@ -6,7 +6,7 @@
 ![Vite](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES2024-f7df1e?style=flat-square&logo=javascript&logoColor=black)
 ![Canvas](https://img.shields.io/badge/Canvas-2D-ff6b35?style=flat-square&logo=html5&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-106_passing-6da03e?style=flat-square&logo=vitest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-113_passing-6da03e?style=flat-square&logo=vitest&logoColor=white)
 ![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-deployed-4c1?style=flat-square&logo=github&logoColor=white)
 
 [![Live Demo](https://img.shields.io/badge/⚔️_Live_Demo-arcane--keep-c9973a?style=for-the-badge)](https://pero-grubac.github.io/arcane-keep/)
@@ -19,7 +19,7 @@
 
 **Arcane Keep** is an endless tower-defense game. Procedurally generated maps, waves that scale into genuinely dangerous territory, and five towers that each branch into three mechanically distinct evolutions — fifteen in total, and none of them are recolours.
 
-The whole simulation runs in tile space on a fixed timestep, with no DOM, no React and no pixels anywhere near it. That is what lets one codebase drive a 60fps canvas, a headless balance bot, and a 106-assertion test suite. Plays with a mouse or on a touchscreen. No backend and no art assets — even the sound is synthesised.
+The whole simulation runs in tile space on a fixed timestep, with no DOM, no React and no pixels anywhere near it. That is what lets one codebase drive a 60fps canvas, a headless balance bot, and a 113-assertion test suite. Plays with a mouse or on a touchscreen. No backend and no art assets — even the sound is synthesised.
 
 ---
 
@@ -32,6 +32,7 @@ The whole simulation runs in tile space on a fixed timestep, with no DOM, no Rea
 - ☄️ **Active abilities** — Meteor, Deep Freeze and Rally on cooldown, so a wave going wrong is something you can answer
 - ☠️ **Bosses that do something** — the Dread Lord shields its escort, the Void Overlord heals itself and silences your towers
 - 🏔️ **Terrain** — water blocks building, high ground extends range, rubble costs gold to clear
+- 🎬 **Replays and share links** — watch any finished run back at up to 16×, or copy a link that replays it in anyone's browser; map seeds can be shared the same way
 - ⚡ **Send waves early** for a bonus that scales with how much of the current wave is still standing
 - 🎯 **Per-tower targeting** — First, Last, Strongest or Closest
 - ☀️ **Daily challenge** — same map and same waves for everyone, seeded from the date
@@ -113,6 +114,10 @@ Everything else follows from these.
 | **The engine runs on a fixed 1/60s substep** | `tick()` feeds the frame delta into an accumulator and integrates in exact steps, so 30fps, 60fps and 144fps produce the same simulation — there is a test for it |
 | **Waves and fights are a pure function of the seed** | `buildWave(seed, n)` is stable, so the Intel panel previews exactly what will spawn; combat rolls come from `state.rng`, so a seed reproduces a whole run |
 
+### Replays
+
+Every player action goes through `dispatch()` in `actions.js`, which applies it and logs it against the substep it happened on. Because of the three invariants, the map, the seed and that log are the whole replay: feeding the actions back in at the same steps reproduces the run exactly, at any frame rate or speed. Towers are addressed by tile rather than id, and a share link is the log deflated and base64url-encoded — a short run is a few hundred characters.
+
 ### Map generation
 
 The generator walks a **half-resolution lattice**: path nodes only ever sit on even coordinates, joined through the odd tile between them. A randomised DFS with backtracking always reaches the exit, so there is no "give up and draw a straight line" fallback. Two properties fall out for free:
@@ -151,7 +156,7 @@ npm test          # single run, ~3.5s
 npm run test:watch
 ```
 
-Eight suites, **106 assertions**, structured around the properties that actually broke during development rather than line coverage.
+Nine suites, **113 assertions**, structured around the properties that actually broke during development rather than line coverage.
 
 | Suite | What it pins down |
 |-------|-------------------|
@@ -162,6 +167,7 @@ Eight suites, **106 assertions**, structured around the properties that actually
 | `engine` | Frame-rate independence, seeded fights, targeting modes, wave merging, boss abilities, splitting |
 | `abilities` | Each power does what its description claims, cooldowns behave |
 | `save` | A run saved between waves and restored through JSON plays on bit-for-bit identically; the run report ranks correctly |
+| `replay` | A varied run replays identically at a different frame rate and speed, through a share link, and across a save and resume |
 | `balance` | A bot plays real waves end to end — catches stalls, leaks and unbounded entity growth |
 
 ---
@@ -188,6 +194,8 @@ arcane-keep/
 │   │   └── global.css          # Design tokens, resets, touch rules
 │   ├── game/                   # The simulation — no DOM, no React, no pixels
 │   │   ├── engine.js           # Fixed-timestep tick, targeting, damage, statuses
+│   │   ├── actions.js          # Every player action, applied and logged for replays
+│   │   ├── replay.js           # Replaying a log, share-link encoding
 │   │   ├── renderer.js         # The only module that converts tiles → pixels
 │   │   ├── towers.js           # Tower and evolution data, stat maths, targeting
 │   │   ├── enemies.js          # Enemy data, wave scaling, the Enemy class
@@ -217,7 +225,7 @@ arcane-keep/
 │       ├── SettingsPanel.jsx   # Volume, motion and status-shape settings
 │       ├── useDialog.js        # Focus trap + Escape for every overlay
 │       └── Toast.jsx
-└── tests/                      # Vitest — 106 assertions across 8 suites
+└── tests/                      # Vitest — 113 assertions across 9 suites
     ├── engine.test.js
     ├── maps.test.js
     ├── towers.test.js
@@ -225,6 +233,8 @@ arcane-keep/
     ├── abilities.test.js
     ├── balance.test.js
     ├── save.test.js
+    ├── replay.test.js
+    ├── bot.js                  # Shared bot that plays through dispatch()
     └── rng.test.js
 ```
 
@@ -288,7 +298,7 @@ npm run dev      # http://localhost:5173
 ## ⚠️ Known limitations
 
 - **Portrait phones are cramped.** The board is 22–23 tiles wide, so a narrow viewport caps cells around 17px. Landscape is the better orientation, and the ▼ button collapses the build panel for about +50% board size.
-- **No replays yet.** Combat rolls are seeded, so recording inputs and replaying a run is now cheap — it just is not built.
+- **Replays are tied to the game version.** A balance change can make an old recording drift; the replay notices and says so rather than pretending.
 - **Branching maps punish a bad opening.** Defending the merge is the correct play, and nothing in the game teaches it.
 - **No meta-progression.** Every run starts from the same towers; only local records carry over.
 
