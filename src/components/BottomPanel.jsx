@@ -49,6 +49,7 @@ export default function BottomPanel({
             key={t.id}
             className={`${styles.tabBtn} ${tab === t.id && !collapsed ? styles.active : ''}`}
             onClick={() => pickTab(t.id)}
+            aria-pressed={tab === t.id && !collapsed}
           >
             {t.label}
           </button>
@@ -59,12 +60,13 @@ export default function BottomPanel({
           onClick={() => setCollapsed((v) => !v)}
           title={collapsed ? 'Show the build panel' : 'Hide the build panel'}
           aria-label={collapsed ? 'Show the build panel' : 'Hide the build panel'}
+          aria-expanded={!collapsed}
         >
           {collapsed ? '▲' : '▼'}
         </button>
 
         <div className={styles.waveArea}>
-          <span className={styles.waveHint}>{hint}</span>
+          <span className={styles.waveHint} aria-live="polite">{hint}</span>
           <button
             className={`${styles.waveBtn} ${early ? styles.earlyBtn : ''}`}
             onClick={onSendWave}

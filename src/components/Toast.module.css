@@ -22,3 +22,11 @@
   78%  { opacity: 1; transform: translate(-50%, 0); }
   100% { opacity: 0; transform: translate(-50%, -4px); }
 }
+
+/* Under reduced motion the toast still has to fade out, just without moving. */
+:global(html[data-motion='reduced']) .toast { animation-name: toastFade; }
+
+@keyframes toastFade {
+  0%, 78% { opacity: 1; transform: translate(-50%, 0); }
+  100%    { opacity: 0; transform: translate(-50%, 0); }
+}

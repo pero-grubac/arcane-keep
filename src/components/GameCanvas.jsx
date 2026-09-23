@@ -8,6 +8,7 @@ import { makeView, render, screenToTile } from '../game/renderer.js'
 // a way to see a tower's range before paying for it.
 export default function GameCanvas({
   gameRef, callbacks, audio, onFrame, onPlaceTower, onSelectTower, onDeselect, onCastAtTile,
+  displayRef,
 }) {
   const canvasRef = useRef(null)
   const viewRef = useRef({ cell: 40, ox: 0, oy: 0, w: 0, h: 0 })
@@ -68,13 +69,14 @@ export default function GameCanvas({
         selectedTowerId: s.selectedTowerId,
         hoverCell: hoverRef.current,
         buildType: s.selectedBuild,
+        ...displayRef.current,
       })
       onFrame()
     }
 
     rafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [gameRef, callbacks, audio, onFrame])
+  }, [gameRef, callbacks, audio, onFrame, displayRef])
 
   const cellAt = useCallback((ev) => {
     const rect = canvasRef.current.getBoundingClientRect()
@@ -137,6 +139,8 @@ export default function GameCanvas({
   return (
     <canvas
       ref={canvasRef}
+      role="img"
+      aria-label="Game board. Press 1 to 5 to pick a tower, then click or tap a tile to build."
       style={{
         display: 'block',
         width: '100%',

@@ -486,7 +486,7 @@ function drawTower(ctx, tower, view, time, selected, stats) {
 
 // ─── Enemies ──────────────────────────────────────────────────────────────────
 
-function drawEnemy(ctx, e, view, time) {
+function drawEnemy(ctx, e, view, time, prefs) {
   const { cell, ox, oy } = view
   const x = ox + e.x * cell
   const y = oy + e.y * cell
@@ -513,7 +513,8 @@ function drawEnemy(ctx, e, view, time) {
   ctx.stroke()
 
   if (burning) {
-    ctx.strokeStyle = alpha('#ff7a20', 0.5 + Math.sin(time * 14 + e.id) * 0.25)
+    const flicker = prefs.reducedMotion ? 0 : Math.sin(time * 14 + e.id) * 0.25
+    ctx.strokeStyle = alpha('#ff7a20', 0.5 + flicker)
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.arc(x, y, r + 2.5, 0, Math.PI * 2)
@@ -534,6 +535,8 @@ function drawEnemy(ctx, e, view, time) {
     ctx.lineTo(x + k * 0.45, y + k)
     ctx.stroke()
   }
+
+  if (prefs.statusIcons) drawStatusShapes(ctx, x, y, r, { chilled, frozen, burning })
 
   if (cell >= 18) {
     ctx.font = `${Math.floor(r * 1.25)}px serif`
@@ -558,9 +561,41 @@ function drawEnemy(ctx, e, view, time) {
   }
 }
 
+// Colour-blind aid: every status also gets a shape, so none of them rely on
+// telling ice blue from fire orange. Marks already use corner brackets.
+//   chilled → dashed ring · frozen/stunned → square frame · burning → flame tick
+function drawStatusShapes(ctx, x, y, r, { chilled, frozen, burning }) {
+  ctx.save()
+  ctx.lineWidth = 1.5
+  ctx.strokeStyle = '#ffffffd0'
+  if (chilled && !frozen) {
+    ctx.setLineDash([2, 2])
+    ctx.beginPath()
+    ctx.arc(x, y, r + 5, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+  if (frozen) {
+    const k = r + 4
+    ctx.strokeRect(x - k, y - k, k * 2, k * 2)
+  }
+  if (burning) {
+    const bx = x + r + 3
+    const by = y - r - 1
+    ctx.fillStyle = '#ffffffe0'
+    ctx.beginPath()
+    ctx.moveTo(bx, by - 5)
+    ctx.lineTo(bx + 3, by + 1)
+    ctx.lineTo(bx - 3, by + 1)
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 // ─── Effects ──────────────────────────────────────────────────────────────────
 
-function drawEffects(ctx, state, view) {
+function drawEffects(ctx, state, view, prefs) {
   const { cell, ox, oy } = view
   for (const f of state.effects) {
     const a = Math.max(0, f.life / f.maxLife)
@@ -588,6 +623,8 @@ function drawEffects(ctx, state, view) {
       ctx.arc(ox + f.x * cell, oy + f.y * cell, r, 0, Math.PI * 2)
       ctx.stroke()
     } else if (f.kind === 'screen') {
+      // A full-screen flash is exactly what reduced motion asks us not to do.
+      if (prefs.reducedMotion) continue
       ctx.fillStyle = alpha(f.color, a * 0.22)
       ctx.fillRect(0, 0, view.w, view.h)
     } else if (f.kind === 'muzzle') {
@@ -763,6 +800,7 @@ export function render(ctx, state, view, opts = {}) {
   const map = state.currentMap
   if (!map) return
   const { selectedTowerId, hoverCell, buildType } = opts
+  const prefs = { reducedMotion: Boolean(opts.reducedMotion), statusIcons: Boolean(opts.statusIcons) }
   const time = state.time
   const { cell, ox, oy } = view
 
@@ -801,12 +839,13 @@ export function render(ctx, state, view, opts = {}) {
     drawTower(ctx, t, view, time, t.id === selectedTowerId, calcStats(t))
   }
   for (const e of state.enemies) {
-    if (!e.dead) drawEnemy(ctx, e, view, time)
+    if (!e.dead) drawEnemy(ctx, e, view, time, prefs)
   }
   drawProjectiles(ctx, state, view)
-  drawEffects(ctx, state, view)
+  drawEffects(ctx, state, view, prefs)
 
-  for (const p of state.particles) {
+  // Particles are pure decoration, and the busiest motion on screen.
+  for (const p of prefs.reducedMotion ? [] : state.particles) {
     const a = Math.max(0, p.life / p.maxLife)
     const s = p.size * a * (cell / 40) * 2.4
     if (s < 0.3) continue

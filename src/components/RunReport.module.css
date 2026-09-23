@@ -1,0 +1,112 @@
+.report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(340px, 80vw);
+  font-size: 11px;
+}
+
+.heading {
+  font-family: var(--font-title);
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.bars {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 116px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mvp {
+  font-size: 8px;
+  color: var(--bg);
+  background: var(--gold);
+  border-radius: 2px;
+  padding: 0 3px;
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+
+.track {
+  height: 8px;
+  display: block;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: var(--gold);
+  border-radius: 0 4px 4px 0;
+}
+
+.row:hover .fill { background: #f0c870; }
+
+.value {
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.more {
+  margin-top: 4px;
+  color: var(--text-dark);
+  font-size: 10px;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.factLabel {
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.fact b {
+  color: var(--text);
+  font-weight: 400;
+  font-size: 13px;
+}
+
+.spark {
+  width: 100%;
+  height: 44px;
+  display: block;
+  overflow: visible;
+}
+
+.base { stroke: var(--border); stroke-width: 1; }
+.line { fill: none; stroke: var(--gold); stroke-width: 2; stroke-linejoin: round; }
+.dot { fill: var(--gold); stroke: var(--bg2); stroke-width: 2; }
+.hit { fill: transparent; }
+.hit:hover { fill: #d4a85330; }

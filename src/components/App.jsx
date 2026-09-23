@@ -7,18 +7,24 @@ import MapSelect from './MapSelect.jsx'
 import Toast from './Toast.jsx'
 import EvolveModal from './EvolveModal.jsx'
 import AbilityBar from './AbilityBar.jsx'
+import GameOver from './GameOver.jsx'
+import SettingsPanel from './SettingsPanel.jsx'
 import {
   makeGameState, createTower, startWave, evolveTower, spawnEvolveParticles,
   pendingEarlyBonus, buildCheck, castAbility, abilityReady,
+  earnGold, spendGold, serializeRun, restoreRun, canSaveRun,
 } from '../game/engine.js'
 import {
   TOWER_DEFS, TOWER_ORDER, EVOLUTIONS, getTowerCost, upgradeCost, nextTargeting,
   MAX_UPGRADE, EVOLVE_REQUIREMENT, EVOLVE_COST, SELL_RATIO,
 } from '../game/towers.js'
 import { randomSeed } from '../game/rng.js'
+import { buildReport } from '../game/report.js'
 import { audio } from '../game/audio.js'
 import { ABILITY_BY_ID, ABILITIES } from '../game/abilities.js'
-import { loadSave, saveSettings, recordRun, rememberSeed } from '../game/storage.js'
+import {
+  loadSave, saveSettings, recordRun, rememberSeed, saveRun, loadRun, clearRun,
+} from '../game/storage.js'
 import styles from './App.module.css'
 
 // The simulation lives in a ref and runs at 60fps. React only ever sees a small
@@ -32,6 +38,8 @@ function snapshot(s) {
     mapId: s.currentMap.id,
     phase: s.phase,
     paused: s.paused,
+    // Only built once the keep has fallen — nothing reads it before then.
+    report: s.phase === 'gameover' ? buildReport(s) : null,
     gold: Math.floor(s.gold),
     lives: s.lives,
     wave: s.wave,
@@ -82,13 +90,29 @@ function fingerprint(s) {
   ].join('|')
 }
 
+function usePrefersReducedMotion() {
+  const query = '(prefers-reduced-motion: reduce)'
+  const [reduced, setReduced] = useState(() => window.matchMedia?.(query).matches ?? false)
+  useEffect(() => {
+    const mq = window.matchMedia?.(query)
+    if (!mq) return
+    const onChange = () => setReduced(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return reduced
+}
+
 export default function App() {
   const [screen, setScreen] = useState('menu')
   const [ui, setUi] = useState(null)
   const [toast, setToast] = useState({ msg: null, key: 0 })
   const [evolveOpen, setEvolveOpen] = useState(false)
   const [soundOn, setSoundOn] = useState(() => loadSave().settings.sound !== false)
+  const [settings, setSettings] = useState(() => loadSave().settings)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [result, setResult] = useState(null)
+  const systemReduced = usePrefersReducedMotion()
 
   const gameRef = useRef(null)
   const fpRef = useRef('')
@@ -97,6 +121,25 @@ export default function App() {
   useEffect(() => {
     audio.setEnabled(soundOn)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    audio.setVolumes({ sfx: settings.sfxVolume, ambient: settings.ambientVolume })
+  }, [settings.sfxVolume, settings.ambientVolume])
+
+  // Display preferences reach the render loop through a ref, so changing one
+  // never restarts the loop.
+  const reducedMotion = settings.motion === 'reduced'
+    || (settings.motion === 'system' && systemReduced)
+  const displayRef = useRef({})
+  useEffect(() => {
+    displayRef.current = { reducedMotion, statusIcons: settings.statusShapes }
+    // CSS animations (toasts, pulses) key off this too.
+    document.documentElement.dataset.motion = reducedMotion ? 'reduced' : 'full'
+  }, [reducedMotion, settings.statusShapes])
+
+  const updateSettings = useCallback((patch) => {
+    setSettings(saveSettings(patch))
   }, [])
 
   // The low bed plays only while a wave is actually on the field, and climbs
@@ -112,12 +155,19 @@ export default function App() {
     setToast((t) => ({ msg, key: t.key + 1 }))
   }, [])
 
+  // Between waves, every meaningful change is written straight to storage, so
+  // closing the tab or reloading never costs more than the wave in progress.
+  const persist = useCallback((s) => {
+    if (canSaveRun(s)) saveRun(serializeRun(s))
+  }, [])
+
   const sync = useCallback(() => {
     const s = gameRef.current
     if (!s) return
     fpRef.current = fingerprint(s)
     setUi(snapshot(s))
-  }, [])
+    persist(s)
+  }, [persist])
 
   // Called from the render loop; only pushes when something actually changed.
   const handleFrame = useCallback(() => {
@@ -127,13 +177,32 @@ export default function App() {
     if (fp === fpRef.current) return
     fpRef.current = fp
     setUi(snapshot(s))
-  }, [])
+    persist(s)
+  }, [persist])
+
+  // A hidden tab should never cost the keep. Browsers throttle or stop
+  // requestAnimationFrame in the background anyway; pausing makes it explicit
+  // and waits for the player to come back.
+  useEffect(() => {
+    if (screen !== 'game') return
+    const onVisibility = () => {
+      const s = gameRef.current
+      if (!document.hidden || !s || s.phase !== 'playing' || s.paused) return
+      s.paused = true
+      sync()
+      pushToast('⏸ Paused while you were away — Space to resume')
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [screen, sync, pushToast])
 
   // ── Start a run ────────────────────────────────────────────────────────────
   const startRun = useCallback((map, opts = {}) => {
     const seed = map.seed ?? randomSeed()
     const s = makeGameState(map, seed)
     s.dailyKey = opts.dailyKey ?? null
+    // Starting a fresh run abandons any saved one.
+    clearRun()
     gameRef.current = s
     fpRef.current = ''
     rememberSeed(seed)
@@ -143,6 +212,22 @@ export default function App() {
     setScreen('game')
     audio.play('ui')
     sync()
+  }, [sync])
+
+  const resumeRun = useCallback(() => {
+    const s = restoreRun(loadRun())
+    if (!s) {
+      clearRun()
+      return
+    }
+    gameRef.current = s
+    fpRef.current = ''
+    setEvolveOpen(false)
+    setResult(null)
+    setScreen('game')
+    audio.play('ui')
+    sync()
+    setToast({ msg: `Resumed before wave ${s.wave + 1} — Space to unpause`, key: 1 })
   }, [sync])
 
   const quitToMenu = useCallback(() => {
@@ -207,7 +292,7 @@ export default function App() {
         : `Not enough gold — need ${cost}g`)
       return
     }
-    s.gold -= cost
+    spendGold(s, cost)
     s.towerCounts[type]++
     const tower = createTower(col, row, type, cost, check.terrain)
     s.towers.push(tower)
@@ -230,7 +315,7 @@ export default function App() {
       pushToast(`Not enough gold — need ${cost}g`)
       return
     }
-    s.gold -= cost
+    spendGold(s, cost)
     t.invested += cost
     t.upgrades[stat]++
     audio.play('gold')
@@ -313,7 +398,7 @@ export default function App() {
     if (!s) return
     const t = s.towers.find((x) => x.id === s.selectedTowerId)
     if (!t || t.evolved || s.gold < EVOLVE_COST) return
-    s.gold -= EVOLVE_COST
+    spendGold(s, EVOLVE_COST)
     t.invested += EVOLVE_COST
     evolveTower(t, stat)
     const v = EVOLUTIONS[t.baseType][stat]
@@ -332,7 +417,7 @@ export default function App() {
     // Refund is based on what was actually spent on this tower, not on what the
     // next one of its type would cost.
     const refund = Math.floor(t.invested * SELL_RATIO)
-    s.gold += refund
+    earnGold(s, refund, 'refunded')
     s.towerCounts[t.baseType] = Math.max(0, s.towerCounts[t.baseType] - 1)
     s.towers = s.towers.filter((x) => x.id !== t.id)
     s.projectiles = s.projectiles.filter((p) => p.towerId !== t.id)
@@ -350,7 +435,7 @@ export default function App() {
     if (!s || s.phase !== 'playing') return
     const early = s.waveActive
     const { data, bonus } = startWave(s)
-    if (bonus > 0) s.gold += bonus
+    earnGold(s, bonus)
     const mod = data.modifier ? ` · ${data.modifier.icon} ${data.modifier.name}` : ''
     audio.play('wave')
     pushToast(
@@ -398,6 +483,7 @@ export default function App() {
         if (s.lives <= 0 && s.phase === 'playing') {
           s.phase = 'gameover'
           s.waveActive = false
+          clearRun()
           audio.play('gameover')
           // Runs are recorded once, the moment the keep falls.
           setResult(
@@ -412,12 +498,12 @@ export default function App() {
       },
       onKill: (e) => {
         const s = gameRef.current
-        if (s) s.gold += e.reward
+        if (s) earnGold(s, e.reward)
       },
       onWaveCleared: (wave, bonus) => {
         const s = gameRef.current
         if (!s) return
-        s.gold += bonus
+        earnGold(s, bonus)
         pushToast(`Wave ${wave} cleared · +${bonus}g`)
       },
     }
@@ -428,6 +514,11 @@ export default function App() {
     if (screen !== 'game') return
     const onKey = (ev) => {
       if (ev.target.tagName === 'INPUT') return
+      // Overlays own the keyboard while they are open.
+      if (ev.target.closest?.('[role="dialog"]')) return
+      // Space and Enter on a focused button should press that button, not also
+      // pause the game or send a wave.
+      if (ev.target.tagName === 'BUTTON' && (ev.key === ' ' || ev.key === 'Enter')) return
       const k = ev.key.toLowerCase()
       if (k >= '1' && k <= '9' && Number(k) <= TOWER_ORDER.length) {
         selectBuild(TOWER_ORDER[Number(k) - 1])
@@ -453,8 +544,27 @@ export default function App() {
   }, [screen, selectBuild, togglePause, sendWave, deselect, cycleSpeed, openEvolve,
     cycleTargeting, toggleSound, requestAbility, sync])
 
+  const settingsPanel = (
+    <SettingsPanel
+      settings={settings}
+      onChange={updateSettings}
+      onClose={() => setSettingsOpen(false)}
+    />
+  )
+
   if (screen === 'menu' || !ui) {
-    return <MapSelect onStart={startRun} soundOn={soundOn} onToggleSound={toggleSound} />
+    return (
+      <>
+        <MapSelect
+          onStart={startRun}
+          onResume={resumeRun}
+          soundOn={soundOn}
+          onToggleSound={toggleSound}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        {settingsOpen && settingsPanel}
+      </>
+    )
   }
 
   const selected = ui.selectedTower
@@ -478,6 +588,7 @@ export default function App() {
         onPauseToggle={togglePause}
         onSoundToggle={toggleSound}
         onQuit={quitToMenu}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <div className={styles.gameArea}>
@@ -490,6 +601,7 @@ export default function App() {
           onSelectTower={selectTower}
           onDeselect={deselect}
           onCastAtTile={castAtTile}
+          displayRef={displayRef}
         />
 
         <AbilityBar
@@ -500,6 +612,9 @@ export default function App() {
           onCast={requestAbility}
         />
         <Toast key={toast.key} message={toast.msg} />
+        {/* The visible toast remounts per message, which screen readers miss;
+            this region stays put and announces each one. */}
+        <div className="sr-only" role="status" aria-live="polite">{toast.msg}</div>
 
         {evolveOpen && selected && !selected.evolved && (
           <EvolveModal
@@ -511,39 +626,11 @@ export default function App() {
         )}
 
         {ui.phase === 'gameover' && (
-          <div className={styles.gameoverOverlay}>
-            <div className={styles.gameoverBox}>
-              <div className={styles.gameoverTitle}>Fortress Fallen</div>
-              <div className={styles.gameoverStats}>
-                <span>Reached wave <b>{ui.wave}</b></span>
-                <span>·</span>
-                <span><b>{ui.kills}</b> kills</span>
-                <span>·</span>
-                <span><b>{ui.towers.length}</b> towers</span>
-              </div>
-              {result?.isBestWave && (
-                <div className={styles.newBest}>★ New best on this map</div>
-              )}
-              {result && !result.isBestWave && (
-                <div className={styles.prevBest}>
-                  Best on this map: wave {result.record.bestWave} · {result.record.runs} runs
-                </div>
-              )}
-              {result?.isBestDaily && ui.dailyKey && (
-                <div className={styles.newBest}>★ New daily best</div>
-              )}
-              <div className={styles.gameoverBtns}>
-                <button className={styles.restartBtn} onClick={restartSameMap}>
-                  Retry Map
-                </button>
-                <button className={styles.ghostBtn} onClick={quitToMenu}>
-                  Choose Map
-                </button>
-              </div>
-            </div>
-          </div>
+          <GameOver ui={ui} result={result} onRetry={restartSameMap} onMenu={quitToMenu} />
         )}
       </div>
+
+      {settingsOpen && settingsPanel}
 
       <BottomPanel
         ui={ui}

@@ -1,3 +1,5 @@
+import { useId, useRef } from 'react'
+import { useDialog } from './useDialog.js'
 import {
   TOWER_DEFS, EVOLUTIONS, STAT_META, calcStats, dpsOf, getDominant, EVOLVE_COST,
 } from '../game/towers.js'
@@ -9,12 +11,22 @@ export default function EvolveModal({ tower, gold, onPick, onClose }) {
   const def = TOWER_DEFS[tower.baseType]
   const now = calcStats(tower)
   const suggested = getDominant(tower.upgrades)
+  const ref = useRef(null)
+  const titleId = useId()
+  useDialog(ref, onClose)
 
   return (
     <div className={styles.backdrop} onClick={onClose}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={ref}
+        className={styles.modal}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         <div className={styles.head}>
-          <span className={styles.title}>
+          <span className={styles.title} id={titleId}>
             Evolve {def.emoji} {def.name}
           </span>
           <span className={styles.sub}>
@@ -34,6 +46,7 @@ export default function EvolveModal({ tower, gold, onPick, onClose }) {
                 style={{ '--ev': v.color }}
                 onClick={() => onPick(stat)}
                 disabled={gold < EVOLVE_COST}
+                data-autofocus={isSuggested ? '' : undefined}
               >
                 {isSuggested && <span className={styles.tag}>your build</span>}
                 <span className={styles.emoji}>{v.emoji}</span>

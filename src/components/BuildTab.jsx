@@ -23,6 +23,8 @@ export default function BuildTab({ ui, onSelectBuild, onUpgrade, onEvolve, onSel
               style={{ '--tc': def.color }}
               onClick={() => onSelectBuild(type)}
               title={`${def.name} — ${def.desc}`}
+              aria-pressed={type === selectedBuild}
+              aria-label={`${def.name}, ${cost} gold${affordable ? '' : ', cannot afford'}. ${def.desc}`}
             >
               <span className={styles.hotkey}>{i + 1}</span>
               <span className={styles.tcEmoji}>{def.emoji}</span>
@@ -146,6 +148,7 @@ function UpgradePanel({ tower, gold, onUpgrade, onEvolve, onSell, onSetTargeting
                 className={`${styles.targetBtn} ${tower.targeting === m.id ? styles.targetOn : ''}`}
                 onClick={() => onSetTargeting(m.id)}
                 title={m.hint}
+                aria-pressed={tower.targeting === m.id}
               >
                 {m.label}
               </button>
@@ -239,7 +242,12 @@ function StatRow({ label, level, color, cost, maxed, canBuy, onUpgrade }) {
           />
         ))}
       </div>
-      <button className={styles.upgBtn} disabled={!canBuy} onClick={onUpgrade}>
+      <button
+        className={styles.upgBtn}
+        disabled={!canBuy}
+        onClick={onUpgrade}
+        aria-label={maxed ? `${label} at max level` : `Upgrade ${label} to level ${level + 1} for ${cost} gold`}
+      >
         {maxed ? 'MAX' : `▲ ${cost}g`}
       </button>
     </div>

@@ -2,13 +2,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   height: 100%;
   gap: 18px;
   background: var(--bg);
   padding: 30px;
   overflow-y: auto;
 }
+
+/* Auto margins rather than justify-content: center. Centring overflows off the
+   top when the menu is taller than the screen, where it cannot be scrolled to;
+   auto margins centre when there is room and collapse to zero when there isn't. */
+.screen > :first-child { margin-top: auto; }
+.screen > :last-child { margin-bottom: auto; }
 
 .title {
   font-family: var(--font-title);
@@ -148,6 +153,14 @@
 .dailyCard:hover { border-color: #e0c040; }
 .dailyCard .cardName { color: #e0c040; }
 
+.resumeCard {
+  border-color: #40d07055;
+  width: 268px;
+}
+
+.resumeCard:hover { border-color: #40d070; }
+.resumeCard .cardName { color: #40d070; }
+
 .soundToggle {
   background: transparent;
   border: 1px solid var(--border);
@@ -177,4 +190,10 @@
   .card { width: 100%; max-width: 330px; }
   .preview { width: 100% !important; height: auto !important; }
   .footer { font-size: 9px; }
+}
+
+.topButtons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
 }

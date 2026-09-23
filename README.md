@@ -6,7 +6,7 @@
 ![Vite](https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES2024-f7df1e?style=flat-square&logo=javascript&logoColor=black)
 ![Canvas](https://img.shields.io/badge/Canvas-2D-ff6b35?style=flat-square&logo=html5&logoColor=white)
-![Vitest](https://img.shields.io/badge/Vitest-99_passing-6da03e?style=flat-square&logo=vitest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-106_passing-6da03e?style=flat-square&logo=vitest&logoColor=white)
 ![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-deployed-4c1?style=flat-square&logo=github&logoColor=white)
 
 [![Live Demo](https://img.shields.io/badge/⚔️_Live_Demo-arcane--keep-c9973a?style=for-the-badge)](https://pero-grubac.github.io/arcane-keep/)
@@ -19,7 +19,7 @@
 
 **Arcane Keep** is an endless tower-defense game. Procedurally generated maps, waves that scale into genuinely dangerous territory, and five towers that each branch into three mechanically distinct evolutions — fifteen in total, and none of them are recolours.
 
-The whole simulation runs in tile space on a fixed timestep, with no DOM, no React and no pixels anywhere near it. That is what lets one codebase drive a 60fps canvas, a headless balance bot, and a 99-assertion test suite. Plays with a mouse or on a touchscreen. No backend and no art assets — even the sound is synthesised.
+The whole simulation runs in tile space on a fixed timestep, with no DOM, no React and no pixels anywhere near it. That is what lets one codebase drive a 60fps canvas, a headless balance bot, and a 106-assertion test suite. Plays with a mouse or on a touchscreen. No backend and no art assets — even the sound is synthesised.
 
 ---
 
@@ -37,6 +37,11 @@ The whole simulation runs in tile space on a fixed timestep, with no DOM, no Rea
 - ☀️ **Daily challenge** — same map and same waves for everyone, seeded from the date
 - 🔊 **Synthesised audio** — no sound files; every tower family has its own firing pitch, and a drone rises under a live wave
 - 📱 **Touch and desktop** — pointer-driven input and a layout that adapts on both axes
+- 💾 **Runs survive a closed tab** — progress autosaves between waves; the menu offers **Continue run**, and the combat RNG picks up exactly where it stopped
+- ⏸ **Auto-pause** when the tab is hidden, so switching away never costs the keep
+- 📊 **Run report** — damage by tower with an MVP, gold earned vs. spent, the costliest wave, and lives across the run
+- 📲 **Installable and offline** — a web manifest and service worker; after one visit it runs with no connection
+- ♿ **Accessible** — labelled controls, focus-trapped dialogs, screen-reader announcements, separate effects/ambient volume, a reduced-motion mode, and optional status shapes so chill/freeze/burn never rely on colour alone
 - 💾 **Local records** — best wave per map, run and kill totals, settings
 
 ---
@@ -146,7 +151,7 @@ npm test          # single run, ~3.5s
 npm run test:watch
 ```
 
-Seven suites, **99 assertions**, structured around the properties that actually broke during development rather than line coverage.
+Eight suites, **106 assertions**, structured around the properties that actually broke during development rather than line coverage.
 
 | Suite | What it pins down |
 |-------|-------------------|
@@ -156,6 +161,7 @@ Seven suites, **99 assertions**, structured around the properties that actually 
 | `towers` | Evolving never reduces power, auras and terrain apply, a tie suggests no path |
 | `engine` | Frame-rate independence, seeded fights, targeting modes, wave merging, boss abilities, splitting |
 | `abilities` | Each power does what its description claims, cooldowns behave |
+| `save` | A run saved between waves and restored through JSON plays on bit-for-bit identically; the run report ranks correctly |
 | `balance` | A bot plays real waves end to end — catches stalls, leaks and unbounded entity growth |
 
 ---
@@ -172,7 +178,10 @@ arcane-keep/
 │   └── workflows/
 │       └── deploy.yml          # Lint + test + build, then publish to Pages
 ├── public/
-│   └── favicon.svg          # Hand-drawn SVG keep, legible down to 16px
+│   ├── favicon.svg             # Hand-drawn SVG keep, legible down to 16px
+│   ├── icon-192.png / icon-512.png  # Install icons rendered from the SVG
+│   ├── manifest.webmanifest    # Install metadata: fullscreen, landscape
+│   └── sw.js                   # Offline cache: page network-first, bundles cache-first
 ├── src/
 │   ├── main.jsx
 │   ├── styles/
@@ -185,7 +194,8 @@ arcane-keep/
 │   │   ├── waves.js            # Deterministic wave composition
 │   │   ├── abilities.js        # Meteor / Deep Freeze / Rally definitions
 │   │   ├── audio.js            # WebAudio synth, driven by queued engine events
-│   │   ├── storage.js          # localStorage records, settings, daily seed
+│   │   ├── storage.js          # localStorage records, settings, saved run, daily seed
+│   │   ├── report.js           # Builds the end-of-run report from run stats
 │   │   ├── rng.js              # Seeded RNG (mulberry32) and seed hashing
 │   │   └── maps/
 │   │       ├── generator.js    # Lattice path generation, terrain, themes
@@ -202,14 +212,19 @@ arcane-keep/
 │       ├── EvolveModal.jsx
 │       ├── AbilityBar.jsx
 │       ├── MapSelect.jsx
+│       ├── GameOver.jsx        # End-of-run dialog
+│       ├── RunReport.jsx       # Damage-by-tower bars and the lives sparkline
+│       ├── SettingsPanel.jsx   # Volume, motion and status-shape settings
+│       ├── useDialog.js        # Focus trap + Escape for every overlay
 │       └── Toast.jsx
-└── tests/                      # Vitest — 99 assertions across 7 suites
+└── tests/                      # Vitest — 106 assertions across 8 suites
     ├── engine.test.js
     ├── maps.test.js
     ├── towers.test.js
     ├── waves.test.js
     ├── abilities.test.js
     ├── balance.test.js
+    ├── save.test.js
     └── rng.test.js
 ```
 
