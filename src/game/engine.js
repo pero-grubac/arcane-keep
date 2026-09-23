@@ -37,6 +37,12 @@ export function makeGameState(map, seed) {
     rng: mulberry32(hashSeed(seed, 0x5eed)),
     sfx: [],
     acc: 0,
+    // Substeps simulated so far. Player actions are logged against this, which
+    // is what lets a replay apply each one at exactly the same moment.
+    steps: 0,
+    maxSubsteps: MAX_SUBSTEPS,
+    // Every player action, in order: [step, code, ...args]. See actions.js.
+    log: [],
     // Active abilities: remaining cooldown per id, plus the one awaiting a
     // target click and the live Rally timer.
     abilityCd: makeAbilityState(),
@@ -199,20 +205,23 @@ export function startWave(state) {
 }
 
 // ─── Saving a run ─────────────────────────────────────────────────────────────
-// A run is only ever saved between waves. Waves are a pure function of the
-// seed, so the field itself is not stored: the towers, the purse and the combat
-// RNG position are enough to carry on where the player left off. The one thing
-// dropped is burning ground still smouldering from the last wave.
+// A run is only ever saved between waves, once the last shots have landed.
+// Waves are a pure function of the seed, so the field itself is not stored: the
+// towers, the purse, any burning ground and the combat RNG position are enough
+// to carry on exactly where the player left off. The action log comes along
+// too, so a resumed run can still be replayed from its first wave.
 
-const SAVE_VERSION = 1
+const SAVE_VERSION = 2
 
 const TOWER_FIELDS = [
   'id', 'col', 'row', 'terrain', 'baseType', 'upgrades', 'evolved', 'evolveStat',
   'targeting', 'killCount', 'damageDealt', 'invested', 'cooldown', 'spin',
 ]
 
+// A replay is never saved: it would overwrite the player's own run.
 export function canSaveRun(state) {
-  return state.phase === 'playing' && !state.waveActive
+  return state.phase === 'playing' && !state.waveActive && state.projectiles.length === 0
+    && !state.replay
 }
 
 export function serializeRun(state) {
@@ -236,11 +245,14 @@ export function serializeRun(state) {
     time: state.time,
     // The fixed-timestep remainder decides which frame each substep lands on.
     acc: state.acc,
+    steps: state.steps,
     spawnCount: state.spawnCount,
     gameSpeed: state.gameSpeed,
     abilityCd: { ...state.abilityCd },
     towerCounts: { ...state.towerCounts },
     stats: structuredClone(state.stats),
+    hazards: state.hazards.map((h) => ({ ...h })),
+    log: state.log ? state.log.map((a) => a.slice()) : null,
     towers: state.towers.map((t) => {
       const out = {}
       for (const k of TOWER_FIELDS) out[k] = t[k]
@@ -251,16 +263,22 @@ export function serializeRun(state) {
 }
 
 export function restoreRun(data) {
-  if (!data || data.v !== SAVE_VERSION || !data.map) return null
+  // Version 1 saves predate the action log; they restore fine, they just
+  // cannot be replayed from the start.
+  if (!data || !(data.v === 1 || data.v === SAVE_VERSION) || !data.map) return null
   const state = makeGameState(data.map, data.seed)
   state.dailyKey = data.dailyKey
   state.rng.setState(data.rng)
-  for (const k of ['wave', 'gold', 'lives', 'kills', 'leaked', 'time', 'acc', 'spawnCount', 'gameSpeed']) {
+  for (const k of ['wave', 'gold', 'lives', 'kills', 'leaked', 'time', 'acc', 'steps', 'spawnCount', 'gameSpeed']) {
     if (typeof data[k] === 'number') state[k] = data[k]
   }
   Object.assign(state.abilityCd, data.abilityCd)
   Object.assign(state.towerCounts, data.towerCounts)
   state.stats = { ...state.stats, ...data.stats }
+  state.hazards = (data.hazards ?? []).map((h) => ({ ...h }))
+  // A version 1 save has no log, so there is nothing to replay from; null
+  // tells dispatch to stop recording and the UI to hide the replay buttons.
+  state.log = data.log ? data.log.map((a) => a.slice()) : null
   state.towers = data.towers.map((saved) => {
     const t = createTower(saved.col, saved.row, saved.baseType, saved.invested, saved.terrain)
     Object.assign(t, saved, { upgrades: { ...saved.upgrades } })
@@ -829,7 +847,18 @@ function reapEnemies(state, callbacks) {
       state.stats.leaks[state.wave] = (state.stats.leaks[state.wave] ?? 0) + e.liveDmg
       spawnParticles(state, e.x, e.y, '#e04030', 12, 1.5, 3.5, 0.5, 1.2)
       sfx(state, 'leak')
-      callbacks.onLeak(e)
+      // The rules live here rather than in the UI, so a headless replay loses
+      // exactly the lives the real run did.
+      if (state.phase === 'playing') {
+        state.lives = Math.max(0, state.lives - e.liveDmg)
+        if (state.lives <= 0) {
+          state.phase = 'gameover'
+          state.waveActive = false
+          sfx(state, 'gameover')
+          callbacks.onGameOver?.()
+        }
+      }
+      callbacks.onLeak?.(e)
       continue
     }
     if (!e.dead) {
@@ -839,7 +868,8 @@ function reapEnemies(state, callbacks) {
 
     state.kills++
     sfx(state, e.tags.includes('boss') ? 'bosskill' : 'kill')
-    callbacks.onKill(e)
+    earnGold(state, e.reward)
+    callbacks.onKill?.(e)
     const tower = state.towers.find((t) => t.id === e.lastHitBy)
     if (tower) tower.killCount++
     spawnParticles(state, e.x, e.y, e.color, 12, 1.5, 3, 0.45, 1.1)
@@ -869,30 +899,35 @@ function reapEnemies(state, callbacks) {
 
 // ─── Main tick ────────────────────────────────────────────────────────────────
 
-export function tick(state, rawDt, callbacks) {
+export function tick(state, rawDt, callbacks = {}) {
   state.sfx.length = 0
   if (state.phase !== 'playing' || state.paused) return
-
-  // Support auras are a function of tower layout, so once per frame is plenty.
-  recomputeAuras(state)
 
   // A true fixed-timestep accumulator: every substep advances exactly 1/60s,
   // whatever the frame rate. Leftover time carries to the next frame, so the
   // simulation evolves identically at 30fps, 60fps and 144fps.
   state.acc += Math.min(rawDt, 0.25) * state.gameSpeed
   let steps = 0
-  while (state.acc >= SUBSTEP && steps < MAX_SUBSTEPS) {
+  while (state.acc >= SUBSTEP && steps < state.maxSubsteps && state.phase === 'playing') {
     substep(state, SUBSTEP, callbacks)
     state.acc -= SUBSTEP
     steps++
   }
   // If we are hopelessly behind (tab was backgrounded), drop the backlog rather
   // than spiral into a death loop.
-  if (steps === MAX_SUBSTEPS && state.acc > SUBSTEP * 4) state.acc = 0
+  if (steps === state.maxSubsteps && state.acc > SUBSTEP * 4) state.acc = 0
 }
 
 function substep(state, dt, callbacks) {
+  // A replay feeds the recorded actions in here, at the step they happened.
+  state.beforeStep?.(state)
+  state.steps++
   state.time += dt
+
+  // Per substep rather than per frame: once per frame would tie aura timing
+  // (Rally running out, a new Obelisk) to the frame rate, and a replay at 16×
+  // would drift from the run it replays.
+  recomputeAuras(state)
 
   for (const id of Object.keys(state.abilityCd)) {
     if (state.abilityCd[id] > 0) state.abilityCd[id] = Math.max(0, state.abilityCd[id] - dt)
@@ -1004,7 +1039,9 @@ function substep(state, dt, callbacks) {
   if (state.waveActive && state.spawnQueue.length === 0 && state.enemies.length === 0) {
     state.waveActive = false
     state.stats.waves.push({ wave: state.wave, lives: state.lives })
-    callbacks.onWaveCleared(state.wave, clearBonus(state.wave))
+    const bonus = clearBonus(state.wave)
+    earnGold(state, bonus)
+    callbacks.onWaveCleared?.(state.wave, bonus)
   }
 
   // ── Cosmetics ──

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   makeGameState, createTower, startWave, tick, evolveTower, buildCheck,
-  serializeRun, restoreRun, canSaveRun, earnGold,
+  serializeRun, restoreRun, canSaveRun,
 } from '../src/game/engine.js'
 import { generateMap } from '../src/game/maps/generator.js'
 import { mulberry32 } from '../src/game/rng.js'
@@ -11,23 +11,11 @@ import { buildReport } from '../src/game/report.js'
 // a run, save it between waves, restore it through JSON, and then play the next
 // waves on both copies side by side.
 
-function callbacksFor(state) {
-  return {
-    onLeak: (e) => {
-      state.lives = Math.max(0, state.lives - e.liveDmg)
-      if (state.lives <= 0) state.phase = 'gameover'
-    },
-    onKill: (e) => earnGold(state, e.reward),
-    onWaveCleared: (_w, bonus) => earnGold(state, bonus),
-  }
-}
-
 function playWave(state) {
-  const cb = callbacksFor(state)
   startWave(state)
   let guard = 0
   while (state.waveActive && state.phase === 'playing' && guard++ < 60 * 600) {
-    tick(state, 1 / 60, cb)
+    tick(state, 1 / 60)
   }
 }
 

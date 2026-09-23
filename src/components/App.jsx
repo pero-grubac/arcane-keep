@@ -8,15 +8,18 @@ import Toast from './Toast.jsx'
 import EvolveModal from './EvolveModal.jsx'
 import AbilityBar from './AbilityBar.jsx'
 import GameOver from './GameOver.jsx'
+import ReplayEnd from './ReplayEnd.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import {
-  makeGameState, createTower, startWave, evolveTower, spawnEvolveParticles,
-  pendingEarlyBonus, buildCheck, castAbility, abilityReady,
-  earnGold, spendGold, serializeRun, restoreRun, canSaveRun,
+  makeGameState, spawnEvolveParticles, pendingEarlyBonus, abilityReady,
+  serializeRun, restoreRun, canSaveRun,
 } from '../game/engine.js'
+import { dispatch, act } from '../game/actions.js'
 import {
-  TOWER_DEFS, TOWER_ORDER, EVOLUTIONS, getTowerCost, upgradeCost, nextTargeting,
-  MAX_UPGRADE, EVOLVE_REQUIREMENT, EVOLVE_COST, SELL_RATIO,
+  makeReplayState, replayFinished, recordingOf, encodeRecording, decodeRecording, shareUrl,
+} from '../game/replay.js'
+import {
+  TOWER_DEFS, TOWER_ORDER, EVOLUTIONS, nextTargeting, EVOLVE_REQUIREMENT, EVOLVE_COST,
 } from '../game/towers.js'
 import { randomSeed } from '../game/rng.js'
 import { buildReport } from '../game/report.js'
@@ -40,6 +43,16 @@ function snapshot(s) {
     paused: s.paused,
     // Only built once the keep has fallen — nothing reads it before then.
     report: s.phase === 'gameover' ? buildReport(s) : null,
+    // A version 1 save carried no action log, so that run cannot be replayed.
+    canReplay: Array.isArray(s.log),
+    replay: s.replay
+      ? {
+        done: Boolean(s.replay.done),
+        desync: s.replay.desync,
+        applied: s.replay.idx,
+        total: s.replay.log.length,
+      }
+      : null,
     gold: Math.floor(s.gold),
     lives: s.lives,
     wave: s.wave,
@@ -73,6 +86,7 @@ function fingerprint(s) {
     s.waveActive, s.enemies.length + s.spawnQueue.length, s.towers.length,
     s.selectedTowerId, s.selectedBuild, s.pendingAbility,
     Math.ceil(s.rallyT),
+    s.replay ? `${s.replay.idx}/${s.replay.done}/${s.replay.desync}` : '',
     ABILITIES.map((a) => Math.ceil(s.abilityCd[a.id] ?? 0)).join(','),
     s.towers.reduce(
       (a, t) => a + t.upgrades.dmg + t.upgrades.spd + t.upgrades.rng
@@ -155,10 +169,15 @@ export default function App() {
     setToast((t) => ({ msg, key: t.key + 1 }))
   }, [])
 
-  // Between waves, every meaningful change is written straight to storage, so
-  // closing the tab or reloading never costs more than the wave in progress.
+  // Between waves, every meaningful change is written to storage, so closing the
+  // tab or reloading never costs more than the wave in progress. A change only
+  // marks the run dirty; the write waits for the last shots to land, because a
+  // save is only exact once nothing is in flight.
+  const dirtyRef = useRef(false)
   const persist = useCallback((s) => {
-    if (canSaveRun(s)) saveRun(serializeRun(s))
+    if (!dirtyRef.current || !canSaveRun(s)) return
+    saveRun(serializeRun(s))
+    dirtyRef.current = false
   }, [])
 
   const sync = useCallback(() => {
@@ -166,6 +185,7 @@ export default function App() {
     if (!s) return
     fpRef.current = fingerprint(s)
     setUi(snapshot(s))
+    dirtyRef.current = true
     persist(s)
   }, [persist])
 
@@ -173,10 +193,13 @@ export default function App() {
   const handleFrame = useCallback(() => {
     const s = gameRef.current
     if (!s) return
+    if (s.replay && !s.replay.done && replayFinished(s)) s.replay.done = true
     const fp = fingerprint(s)
-    if (fp === fpRef.current) return
-    fpRef.current = fp
-    setUi(snapshot(s))
+    if (fp !== fpRef.current) {
+      fpRef.current = fp
+      setUi(snapshot(s))
+      dirtyRef.current = true
+    }
     persist(s)
   }, [persist])
 
@@ -197,22 +220,27 @@ export default function App() {
   }, [screen, sync, pushToast])
 
   // ── Start a run ────────────────────────────────────────────────────────────
+  const enterGame = useCallback((s, toastMsg = null) => {
+    gameRef.current = s
+    fpRef.current = ''
+    dirtyRef.current = false
+    setEvolveOpen(false)
+    setResult(null)
+    setToast({ msg: toastMsg, key: 0 })
+    setScreen('game')
+    audio.play('ui')
+    sync()
+  }, [sync])
+
   const startRun = useCallback((map, opts = {}) => {
     const seed = map.seed ?? randomSeed()
     const s = makeGameState(map, seed)
     s.dailyKey = opts.dailyKey ?? null
     // Starting a fresh run abandons any saved one.
     clearRun()
-    gameRef.current = s
-    fpRef.current = ''
     rememberSeed(seed)
-    setEvolveOpen(false)
-    setResult(null)
-    setToast({ msg: null, key: 0 })
-    setScreen('game')
-    audio.play('ui')
-    sync()
-  }, [sync])
+    enterGame(s)
+  }, [enterGame])
 
   const resumeRun = useCallback(() => {
     const s = restoreRun(loadRun())
@@ -220,15 +248,17 @@ export default function App() {
       clearRun()
       return
     }
-    gameRef.current = s
-    fpRef.current = ''
-    setEvolveOpen(false)
-    setResult(null)
-    setScreen('game')
-    audio.play('ui')
-    sync()
-    setToast({ msg: `Resumed before wave ${s.wave + 1} — Space to unpause`, key: 1 })
-  }, [sync])
+    enterGame(s, `Resumed before wave ${s.wave + 1} — Space to unpause`)
+  }, [enterGame])
+
+  const watchReplay = useCallback((rec) => {
+    const s = makeReplayState(rec)
+    if (!s) {
+      pushToast('That replay could not be played')
+      return
+    }
+    enterGame(s, '▶ Replay — watching only, F to change speed')
+  }, [enterGame, pushToast])
 
   const quitToMenu = useCallback(() => {
     audio.setAmbient(false)
@@ -241,8 +271,48 @@ export default function App() {
   const restartSameMap = useCallback(() => {
     const s = gameRef.current
     if (!s) return
-    startRun(s.currentMap, { dailyKey: s.dailyKey })
+    startRun(s.currentMap, { dailyKey: s.replay ? null : s.dailyKey })
   }, [startRun])
+
+  // Copies a link to the run. Clipboard access can be refused, so the fallback
+  // puts the link where it can be copied by hand.
+  const copyLink = useCallback(async (url, what) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      pushToast(`🔗 ${what} link copied`)
+    } catch {
+      window.prompt(`Copy this ${what.toLowerCase()} link:`, url)
+    }
+  }, [pushToast])
+
+  const shareReplay = useCallback(async () => {
+    const s = gameRef.current
+    const rec = s && recordingOf(s)
+    if (!rec) return
+    copyLink(shareUrl({ replay: await encodeRecording(rec) }), 'Replay')
+  }, [copyLink])
+
+  const shareSeed = useCallback((seed) => {
+    copyLink(shareUrl({ seed }), 'Map')
+  }, [copyLink])
+
+  // A link can open straight into a replay (?replay=…) or preselect a map seed
+  // (?seed=…). Either way the address is tidied afterwards, so a reload does
+  // not replay the link again.
+  const [linkSeed] = useState(() => {
+    const seed = new URLSearchParams(window.location.search).get('seed')
+    return seed && Number.isFinite(Number(seed)) ? Number(seed) >>> 0 : null
+  })
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('replay')
+    if (window.location.search) window.history.replaceState(null, '', window.location.pathname)
+    if (code) {
+      decodeRecording(code).then((rec) => {
+        if (rec) watchReplay(rec)
+        else pushToast('That replay link could not be read')
+      })
+    }
+  }, [watchReplay, pushToast])
 
   // ── Build / select ─────────────────────────────────────────────────────────
   const selectBuild = useCallback((type) => {
@@ -272,115 +342,97 @@ export default function App() {
     sync()
   }, [sync])
 
+  // Every action that changes the fight goes through dispatch, which is what
+  // records it for the replay. A replay is watch-only.
+  const run = useCallback((action) => {
+    const s = gameRef.current
+    if (!s) return null
+    if (s.replay) {
+      pushToast('Watching a replay — choose Play this map to take over')
+      return null
+    }
+    const res = dispatch(s, action)
+    if (!res.ok) pushToast(res.reason)
+    return res
+  }, [pushToast])
+
+  const selectedTowerOf = (s) => s.towers.find((x) => x.id === s.selectedTowerId)
+
   const placeTower = useCallback((col, row) => {
     const s = gameRef.current
-    if (!s || s.phase !== 'playing') return
-    if (s.pendingAbility) return
-    const type = s.selectedBuild
-    if (!type) return
-
-    const check = buildCheck(s, col, row)
-    if (!check.ok) {
-      pushToast(check.reason)
-      return
-    }
-    // Rubble has to be cleared before anything can stand on it.
-    const cost = getTowerCost(type, s.towerCounts) + check.extraCost
-    if (s.gold < cost) {
-      pushToast(check.extraCost
-        ? `Not enough gold — ${cost}g with rubble clearing`
-        : `Not enough gold — need ${cost}g`)
-      return
-    }
-    spendGold(s, cost)
-    s.towerCounts[type]++
-    const tower = createTower(col, row, type, cost, check.terrain)
-    s.towers.push(tower)
-    s.selectedTowerId = tower.id
-    s.selectedBuild = type
+    if (!s || s.pendingAbility || !s.selectedBuild) return
+    const res = run(act.place(col, row, s.selectedBuild))
+    if (!res?.ok) return
+    s.selectedTowerId = res.tower.id
     audio.play('build')
     sync()
-  }, [pushToast, sync])
+  }, [run, sync])
 
   // ── Upgrade / evolve / sell / targeting ────────────────────────────────────
   const upgrade = useCallback((stat) => {
     const s = gameRef.current
-    if (!s) return
-    const t = s.towers.find((x) => x.id === s.selectedTowerId)
+    const t = s && selectedTowerOf(s)
     if (!t) return
-    const lvl = t.upgrades[stat]
-    if (lvl >= MAX_UPGRADE) return
-    const cost = upgradeCost(lvl)
-    if (s.gold < cost) {
-      pushToast(`Not enough gold — need ${cost}g`)
-      return
-    }
-    spendGold(s, cost)
-    t.invested += cost
-    t.upgrades[stat]++
-    audio.play('gold')
+    if (run(act.upgrade(t, stat))?.ok) audio.play('gold')
     sync()
-  }, [pushToast, sync])
-
-  const cycleTargeting = useCallback(() => {
-    const s = gameRef.current
-    if (!s) return
-    const t = s.towers.find((x) => x.id === s.selectedTowerId)
-    if (!t) return
-    t.targeting = nextTargeting(t.targeting)
-    audio.play('ui')
-    sync()
-  }, [sync])
+  }, [run, sync])
 
   const setTargeting = useCallback((mode) => {
     const s = gameRef.current
-    if (!s) return
-    const t = s.towers.find((x) => x.id === s.selectedTowerId)
+    const t = s && selectedTowerOf(s)
     if (!t) return
-    t.targeting = mode
-    audio.play('ui')
+    if (run(act.target(t, mode))?.ok) audio.play('ui')
     sync()
-  }, [sync])
+  }, [run, sync])
+
+  const cycleTargeting = useCallback(() => {
+    const s = gameRef.current
+    const t = s && selectedTowerOf(s)
+    if (t) setTargeting(nextTargeting(t.targeting))
+  }, [setTargeting])
 
   // Targeted abilities arm first and fire on the next click on the board.
   const requestAbility = useCallback((id) => {
     const s = gameRef.current
-    if (!s || s.phase !== 'playing') return
-    if (!abilityReady(s, id)) return
+    if (!s || s.phase !== 'playing' || !abilityReady(s, id)) return
     const def = ABILITY_BY_ID[id]
-    if (def.targeted) {
+    if (def.targeted && !s.replay) {
       s.pendingAbility = s.pendingAbility === id ? null : id
       if (s.pendingAbility) pushToast(`${def.emoji} ${def.name} — click a tile`)
       audio.play('ui')
       sync()
       return
     }
-    if (castAbility(s, id)) {
+    if (run(act.cast(id))?.ok) {
       audio.play(id)
       pushToast(`${def.emoji} ${def.name}`)
       sync()
     }
-  }, [pushToast, sync])
+  }, [pushToast, run, sync])
 
   const castAtTile = useCallback((col, row) => {
     const s = gameRef.current
     if (!s || !s.pendingAbility) return false
     const id = s.pendingAbility
-    const fired = castAbility(s, id, { col, row })
     s.pendingAbility = null
-    if (fired) {
+    if (run(act.cast(id, { col, row }))?.ok) {
       audio.play(id)
       pushToast(`${ABILITY_BY_ID[id].emoji} ${ABILITY_BY_ID[id].name}!`)
     }
     sync()
     return true
-  }, [pushToast, sync])
+  }, [pushToast, run, sync])
 
+  // The checks here only decide whether the picker opens; the evolve itself is
+  // validated again by dispatch.
   const openEvolve = useCallback(() => {
     const s = gameRef.current
-    if (!s) return
-    const t = s.towers.find((x) => x.id === s.selectedTowerId)
+    const t = s && selectedTowerOf(s)
     if (!t || t.evolved) return
+    if (s.replay) {
+      run(act.evolve(t, 'dmg'))
+      return
+    }
     const total = t.upgrades.dmg + t.upgrades.spd + t.upgrades.rng
     if (total < EVOLVE_REQUIREMENT) {
       pushToast(`Needs ${EVOLVE_REQUIREMENT} upgrade levels to evolve (${total}/${EVOLVE_REQUIREMENT})`)
@@ -391,51 +443,42 @@ export default function App() {
       return
     }
     setEvolveOpen(true)
-  }, [pushToast])
+  }, [pushToast, run])
 
   const confirmEvolve = useCallback((stat) => {
     const s = gameRef.current
-    if (!s) return
-    const t = s.towers.find((x) => x.id === s.selectedTowerId)
-    if (!t || t.evolved || s.gold < EVOLVE_COST) return
-    spendGold(s, EVOLVE_COST)
-    t.invested += EVOLVE_COST
-    evolveTower(t, stat)
+    const t = s && selectedTowerOf(s)
+    if (!t) return
+    setEvolveOpen(false)
+    if (!run(act.evolve(t, stat))?.ok) return
     const v = EVOLUTIONS[t.baseType][stat]
     spawnEvolveParticles(s, t, v.color)
-    setEvolveOpen(false)
     audio.play('evolve')
     pushToast(`✦ ${TOWER_DEFS[t.baseType].name} became ${v.name}`)
     sync()
-  }, [pushToast, sync])
+  }, [pushToast, run, sync])
 
   const sellTower = useCallback(() => {
     const s = gameRef.current
-    if (!s) return
-    const t = s.towers.find((x) => x.id === s.selectedTowerId)
+    const t = s && selectedTowerOf(s)
     if (!t) return
-    // Refund is based on what was actually spent on this tower, not on what the
-    // next one of its type would cost.
-    const refund = Math.floor(t.invested * SELL_RATIO)
-    earnGold(s, refund, 'refunded')
-    s.towerCounts[t.baseType] = Math.max(0, s.towerCounts[t.baseType] - 1)
-    s.towers = s.towers.filter((x) => x.id !== t.id)
-    s.projectiles = s.projectiles.filter((p) => p.towerId !== t.id)
+    const res = run(act.sell(t))
+    if (!res?.ok) return
     s.selectedTowerId = null
     s.selectedBuild = t.baseType
     setEvolveOpen(false)
     audio.play('gold')
-    pushToast(`Sold for ${refund}g`)
+    pushToast(`Sold for ${res.refund}g`)
     sync()
-  }, [pushToast, sync])
+  }, [pushToast, run, sync])
 
   // ── Wave / speed / pause / sound ───────────────────────────────────────────
   const sendWave = useCallback(() => {
     const s = gameRef.current
     if (!s || s.phase !== 'playing') return
-    const early = s.waveActive
-    const { data, bonus } = startWave(s)
-    earnGold(s, bonus)
+    const res = run(act.sendWave())
+    if (!res?.ok) return
+    const { data, bonus, early } = res
     const mod = data.modifier ? ` · ${data.modifier.icon} ${data.modifier.name}` : ''
     audio.play('wave')
     pushToast(
@@ -444,13 +487,16 @@ export default function App() {
         : `⚔ Wave ${s.wave} — ${data.totalCount} enemies${mod}`,
     )
     sync()
-  }, [pushToast, sync])
+  }, [pushToast, run, sync])
 
+  // Speed never touches the simulation's results, only how many substeps run
+  // per frame — so a replay can go much faster than live play.
   const cycleSpeed = useCallback(() => {
     const s = gameRef.current
     if (!s) return
-    s.gameSpeed = s.gameSpeed === 1 ? 2 : s.gameSpeed === 2 ? 4 : 1
-    saveSettings({ speed: s.gameSpeed })
+    const speeds = s.replay ? [1, 2, 4, 8, 16] : [1, 2, 4]
+    s.gameSpeed = speeds[(speeds.indexOf(s.gameSpeed) + 1) % speeds.length]
+    if (!s.replay) saveSettings({ speed: s.gameSpeed })
     audio.play('ui')
     sync()
   }, [sync])
@@ -473,37 +519,26 @@ export default function App() {
   }, [])
 
   // ── Game events from the loop ──────────────────────────────────────────────
+  // The engine applies the rules itself (lives, gold, the keep falling); these
+  // are only for what the UI does in response.
   const callbacks = useRef({})
   useEffect(() => {
     callbacks.current = {
-      onLeak: (e) => {
+      onGameOver: () => {
         const s = gameRef.current
-        if (!s) return
-        s.lives = Math.max(0, s.lives - e.liveDmg)
-        if (s.lives <= 0 && s.phase === 'playing') {
-          s.phase = 'gameover'
-          s.waveActive = false
-          clearRun()
-          audio.play('gameover')
-          // Runs are recorded once, the moment the keep falls.
-          setResult(
-            recordRun({
-              mapId: s.currentMap.id,
-              wave: s.wave,
-              kills: s.kills,
-              dailyKey: s.dailyKey,
-            }),
-          )
-        }
-      },
-      onKill: (e) => {
-        const s = gameRef.current
-        if (s) earnGold(s, e.reward)
+        if (!s || s.replay) return
+        clearRun()
+        // Runs are recorded once, the moment the keep falls.
+        setResult(
+          recordRun({
+            mapId: s.currentMap.id,
+            wave: s.wave,
+            kills: s.kills,
+            dailyKey: s.dailyKey,
+          }),
+        )
       },
       onWaveCleared: (wave, bonus) => {
-        const s = gameRef.current
-        if (!s) return
-        earnGold(s, bonus)
         pushToast(`Wave ${wave} cleared · +${bonus}g`)
       },
     }
@@ -558,11 +593,16 @@ export default function App() {
         <MapSelect
           onStart={startRun}
           onResume={resumeRun}
+          initialSeed={linkSeed}
+          onShareSeed={shareSeed}
           soundOn={soundOn}
           onToggleSound={toggleSound}
           onOpenSettings={() => setSettingsOpen(true)}
         />
         {settingsOpen && settingsPanel}
+        {/* Link errors and copy confirmations can happen on the menu too. */}
+        <Toast key={toast.key} message={toast.msg} />
+        <div className="sr-only" role="status" aria-live="polite">{toast.msg}</div>
       </>
     )
   }
@@ -584,6 +624,7 @@ export default function App() {
         modifier={ui.modifier}
         soundOn={soundOn}
         dailyKey={ui.dailyKey}
+        replay={ui.replay}
         onSpeedToggle={cycleSpeed}
         onPauseToggle={togglePause}
         onSoundToggle={toggleSound}
@@ -625,8 +666,25 @@ export default function App() {
           />
         )}
 
-        {ui.phase === 'gameover' && (
-          <GameOver ui={ui} result={result} onRetry={restartSameMap} onMenu={quitToMenu} />
+        {ui.phase === 'gameover' && !ui.replay && (
+          <GameOver
+            ui={ui}
+            result={result}
+            onRetry={restartSameMap}
+            onMenu={quitToMenu}
+            onWatchReplay={ui.canReplay ? () => watchReplay(recordingOf(gameRef.current)) : null}
+            onShareReplay={ui.canReplay ? shareReplay : null}
+          />
+        )}
+
+        {ui.replay?.done && (
+          <ReplayEnd
+            ui={ui}
+            onWatchAgain={() => watchReplay(recordingOf(gameRef.current))}
+            onPlayMap={restartSameMap}
+            onShare={shareReplay}
+            onMenu={quitToMenu}
+          />
         )}
       </div>
 
