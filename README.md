@@ -46,6 +46,83 @@ The whole simulation runs in tile space on a fixed timestep, with no DOM, no Rea
 
 ---
 
+## 🚀 Installation
+
+### Prerequisites
+- Node.js 20 or newer
+- npm (comes with Node.js)
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/pero-grubac/arcane-keep.git
+cd arcane-keep
+```
+
+### 2. Install dependencies
+```bash
+npm install
+```
+
+### 3. Start the dev server
+```bash
+npm run dev
+```
+
+Open http://localhost:5173. The dev server reloads on every change.
+
+### 4. Production build (optional)
+```bash
+npm run build
+npm run preview
+```
+
+`npm run build` writes a static site to `dist/`, and `npm run preview` serves it at http://localhost:4173. Because every asset path is relative, `dist/` can be hosted from any folder or subpath.
+
+### Tests
+```bash
+npm run lint && npm test
+```
+
+> Do not open `index.html` with Live Server or by double-clicking it. It loads raw JSX that only Vite can compile, so you get a blank page. Every npm command is listed under **Scripts** below.
+
+---
+
+## 🕹️ Usage
+
+No install needed to play: open the **[live demo](https://pero-grubac.github.io/arcane-keep/)**, or run it locally as above.
+
+### Starting a run
+
+The menu offers four ways in:
+
+| Option | What it is |
+|--------|------------|
+| ▶ **Continue run** | Resumes the last unfinished run, from the start of the wave it was on. Only shown when a save exists |
+| ☀ **Daily Challenge** | Today's map, the same for everyone. Your best wave for the day is kept |
+| 🌲 **Handcrafted maps** | Forest Crossing and Ruins of Aldrath |
+| 🎲 **Random map** | A new procedural map. **Reroll** for another, or type a seed to replay a specific one |
+
+### Playing
+
+1. **Build.** You start with **220 gold** and **20 lives**. Pick a tower (`1`–`5` or the build panel), then click or tap a free tile. Hold and drag to see its range before you pay.
+2. **Send the wave.** Press `Enter` or the send button. The **Intel** tab shows exactly what is coming.
+3. **Spend between waves.** Kills pay gold. Select a tower to upgrade, sell, or change its target priority (`Tab`).
+4. **Evolve.** After 4 upgrades a tower can evolve for 120g into one of three branches (`E`).
+5. **Answer trouble.** Meteor, Deep Freeze and Rally (`Q` `W` `R`) are on cooldown, for the waves that go wrong.
+6. **Survive.** Every enemy that reaches the keep costs lives. At zero the run ends and the **run report** shows what carried it.
+
+Sending a wave while one is still running pays a bonus, so a strong defence earns faster. Progress saves itself between waves, so closing the tab costs nothing.
+
+### Install as an app
+
+In Chrome or Edge, use **Install** in the address bar; on a phone, **Add to Home Screen**. After one visit the game runs offline, fullscreen and in landscape.
+
+### Settings
+
+The ⚙ panel holds effects and ambient volume, a reduced-motion mode, and status shapes that mark chill, freeze and burn without relying on colour.
+
+---
+
 ## 🎮 Controls
 
 | Input | Action |
@@ -265,12 +342,7 @@ The workflow fails the deploy if lint or tests fail, so a broken build never rea
 
 ---
 
-## 🛠️ Local development
-
-```bash
-npm install
-npm run dev      # http://localhost:5173
-```
+## 🛠️ Scripts
 
 | Command | What it does |
 |---------|--------------|
