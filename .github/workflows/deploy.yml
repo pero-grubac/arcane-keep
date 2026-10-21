@@ -3,6 +3,10 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # Nothing in these ends up in dist/, so there is nothing to rebuild.
+    paths-ignore:
+      - '**.md'
+      - LICENSE
   workflow_dispatch:
 
 permissions:
@@ -10,14 +14,13 @@ permissions:
   pages: write
   id-token: write
 
-# Let a running deploy finish; queue at most one more behind it.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A newer push makes this build pointless, so drop it.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +48,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Never cancel a deploy halfway; queue at most one more behind it.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
