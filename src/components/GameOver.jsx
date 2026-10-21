@@ -3,7 +3,7 @@ import RunReport from './RunReport.jsx'
 import { useDialog } from './useDialog.js'
 import styles from './App.module.css'
 
-export default function GameOver({ ui, result, onRetry, onMenu }) {
+export default function GameOver({ ui, result, onRetry, onMenu, onWatchReplay, onShareReplay }) {
   const ref = useRef(null)
   const titleId = useId()
   // No Escape-to-close: the run is over, and the choices are the two buttons.
@@ -46,6 +46,12 @@ export default function GameOver({ ui, result, onRetry, onMenu }) {
             Choose Map
           </button>
         </div>
+        {onWatchReplay && (
+          <div className={styles.gameoverBtns}>
+            <button className={styles.ghostBtn} onClick={onWatchReplay}>▶ Watch replay</button>
+            <button className={styles.ghostBtn} onClick={onShareReplay}>🔗 Copy replay link</button>
+          </div>
+        )}
       </div>
     </div>
   )

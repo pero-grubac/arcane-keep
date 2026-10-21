@@ -2,13 +2,20 @@ import styles from './HUD.module.css'
 
 export default function HUD({
   gold, lives, wave, kills, gameSpeed, paused, phase,
-  enemiesLeft, waveActive, modifier, soundOn, dailyKey,
+  enemiesLeft, waveActive, modifier, soundOn, dailyKey, replay,
   onSpeedToggle, onPauseToggle, onSoundToggle, onQuit, onOpenSettings,
 }) {
   return (
     <div className={styles.hud}>
       <span className={styles.title}>⚔ ARCANE KEEP</span>
-      {dailyKey && <span className={styles.daily} title={`Daily challenge ${dailyKey}`}>☀ DAILY</span>}
+      {replay && (
+        <span className={styles.daily} title="Watching a recorded run">
+          ▶ REPLAY {replay.applied}/{replay.total}
+        </span>
+      )}
+      {dailyKey && !replay && (
+        <span className={styles.daily} title={`Daily challenge ${dailyKey}`}>☀ DAILY</span>
+      )}
 
       <Stat icon="💰" value={gold} title="Gold" />
       <Stat icon="❤️" value={lives} warn={lives <= 5} title="Lives" />

@@ -62,12 +62,14 @@ function MapPreview({ map, width = 210, height = 124 }) {
   return <canvas ref={ref} className={styles.preview} style={{ width, height }} />
 }
 
-export default function MapSelect({ onStart, onResume, soundOn, onToggleSound, onOpenSettings }) {
+export default function MapSelect({
+  onStart, onResume, soundOn, onToggleSound, onOpenSettings, initialSeed, onShareSeed,
+}) {
   const saved = useMemo(() => loadSave(), [])
   const savedRun = useMemo(() => loadRun(), [])
-  // Offer the last seed played first, so reloading the page still lets you
-  // retry the exact map you were on.
-  const [seed, setSeed] = useState(() => saved.lastSeed ?? randomSeed())
+  // A shared map link comes first; otherwise the last seed played, so reloading
+  // the page still lets you retry the exact map you were on.
+  const [seed, setSeed] = useState(() => initialSeed ?? saved.lastSeed ?? randomSeed())
   const [seedInput, setSeedInput] = useState('')
   const randomMap = useMemo(() => generateMap(seed), [seed])
 
@@ -201,6 +203,14 @@ export default function MapSelect({ onStart, onResume, soundOn, onToggleSound, o
               }}
             />
             <button className={styles.rerollBtn} onClick={applySeed}>Use</button>
+            <button
+              className={styles.rerollBtn}
+              onClick={() => onShareSeed(randomMap.seed)}
+              title="Copy a link to this map"
+              aria-label="Copy a link to this map"
+            >
+              🔗
+            </button>
           </div>
         </div>
       </div>
