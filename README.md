@@ -11,6 +11,8 @@
 
 [![Live Demo](https://img.shields.io/badge/⚔️_Live_Demo-arcane--keep-c9973a?style=for-the-badge)](https://pero-grubac.github.io/arcane-keep/)
 
+<img src="readme_assets/demo.gif" alt="Arcane Keep demo: picking Forest Crossing, placing an Archer, a Mage and a Frost tower with the range preview, sending the first wave at double speed and finishing it with a Meteor" width="900">
+
 </div>
 
 ---
@@ -294,6 +296,7 @@ arcane-keep/
 │       ├── SettingsPanel.jsx   # Volume, motion and status-shape settings
 │       ├── useDialog.js        # Focus trap + Escape for every overlay
 │       └── Toast.jsx
+├── readme_assets/demo.gif      # The demo above
 └── tests/                      # Vitest — 106 assertions across 8 suites
     ├── engine.test.js
     ├── maps.test.js
